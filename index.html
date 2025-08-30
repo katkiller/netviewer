@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ham Net Viewer</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f4f4f8;
+      color: #222;
+      padding: 1rem;
+      max-width: 600px;
+      margin: auto;
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.25rem;
+    }
+    #lastUpdated {
+      font-size: 0.85rem;
+      color: #666;
+    }
+    ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    li {
+      padding: 0.25rem 0;
+    }
+    .pointer {
+      font-weight: bold;
+      color: #0066cc;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <h1>Ham Radio Net Viewer</h1>
+  <p id="netInfo">Loading...</p>
+  <p id="lastUpdated"></p>
+  <ul id="checkins"></ul>
+  <p class="error" id="errorMsg"></p>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const USE_DEFAULTS = true;
+const DEFAULT_NET_NAME = "Sarpy County Simplex Net";
+const DEFAULT_CONTROLLER = "W0LHO";
+
+const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : urlParams.get('net') || '';
+const netController = USE_DEFAULTS ? DEFAULT_CONTROLLER : urlParams.get('controller') || '';
+
+
+
+    const parser = new DOMParser();
+    const netInfoEl = document.getElementById('netInfo');
+    const lastUpdatedEl = document.getElementById('lastUpdated');
+    const checkinsEl = document.getElementById('checkins');
+    const errorMsgEl = document.getElementById('errorMsg');
+
+    async function fetchNetData() {
+      try {
+        const res = await fetch('https://www.netlogger.org/api/GetActiveNets.php');
+        if (!res.ok) throw new Error('Network response was not ok');
+        const xml = await res.text();
+        const doc = parser.parseFromString(xml, 'application/xml');
+        const nets = Array.from(doc.getElementsByTagName('Server'));
+
+        const matchedNet = nets.find(n => {
+          const name = n.getAttribute('NetName') || '';
+          const controller = n.getAttribute('NetControlCallsign') || '';
+          const nameMatch = netName && name.trim().toLowerCase() === netName.trim().toLowerCase();
+          const controllerMatch = netController && controller.trim().toUpperCase() === netController.trim().toUpperCase();
+          return nameMatch || controllerMatch;
+        });
+
+        if (!matchedNet) {
+          netInfoEl.textContent = `No matching net found for name "${netName}" or controller "${netController}".`;
+          checkinsEl.innerHTML = '';
+          lastUpdatedEl.textContent = '';
+          return;
+        }
+
+        const netID = matchedNet.getAttribute('ID');
+        const netDisplayName = matchedNet.getAttribute('NetName');
+        const controllerCall = matchedNet.getAttribute('NetControlCallsign');
+
+        const checkinsRes = await fetch(`https://www.netlogger.org/api/GetCheckins.php?NetID=${encodeURIComponent(netID)}`);
+        if (!checkinsRes.ok) throw new Error('Failed to fetch checkins');
+        const checkinXml = await checkinsRes.text();
+        const checkinDoc = parser.parseFromString(checkinXml, 'application/xml');
+
+        const checkinElements = Array.from(checkinDoc.getElementsByTagName('Checkin'));
+        const callsigns = checkinElements.map(c => c.getAttribute('Callsign')).filter(Boolean);
+        const pointerElement = checkinDoc.getElementsByTagName('Pointer')[0];
+        const pointer = pointerElement ? pointerElement.getAttribute('Callsign') : null;
+
+        netInfoEl.innerHTML = `
+          <strong>Net:</strong> ${netDisplayName}<br>
+          <strong>Controller:</strong> ${controllerCall}
+        `;
+
+        checkinsEl.innerHTML = '';
+        const seen = new Set();
+        callsigns.forEach(call => {
+          if (!seen.has(call)) {
+            seen.add(call);
+            const li = document.createElement('li');
+            li.textContent = call;
+            if (pointer && call === pointer) li.classList.add('pointer');
+            checkinsEl.appendChild(li);
+          }
+        });
+
+        lastUpdatedEl.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+        errorMsgEl.textContent = '';
+      } catch (err) {
+        console.error(err);
+        errorMsgEl.textContent = 'Failed to load net data.';
+      }
+    }
+
+    fetchNetData();
+    setInterval(fetchNetData, 60000);
+  </script>
+</body>
+</html>
