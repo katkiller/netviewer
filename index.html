@@ -46,12 +46,12 @@
 
   <script>
     const USE_DEFAULTS = true;
-    const DEFAULT_NET_NAME = "3916 Nets";
+    const DEFAULT_NET_NAME = "3916 Nets<";
+
     const urlParams = new URLSearchParams(window.location.search);
 
-
     const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : urlParams.get('net') || '';
-
+ 
 
     const parser = new DOMParser();
     const netInfoEl = document.getElementById('netInfo');
@@ -136,4 +136,5 @@
   </script>
 </body>
 </html>
+
 
