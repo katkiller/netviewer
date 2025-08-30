@@ -62,7 +62,9 @@ const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : urlParams.get('net') || '';
 
     async function fetchNetData() {
       try {
-        const res = await fetch('https://www.netlogger.org/api/GetActiveNets.php');
+        const proxy = 'https://corsproxy.io/?';
+        const apiUrl = 'https://www.netlogger.org/api/GetActiveNets.php';
+        const res = await fetch(proxy + encodeURIComponent(apiUrl));
         if (!res.ok) throw new Error('Network response was not ok');
         const xml = await res.text();
         const doc = parser.parseFromString(xml, 'application/xml');
