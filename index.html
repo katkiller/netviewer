@@ -45,19 +45,19 @@
   <p class="error" id="errorMsg"></p>
 
   <script>
-    const USE_DEFAULTS = true;
-    const DEFAULT_NET_NAME = "3916 Nets<";
-
-    const urlParams = new URLSearchParams(window.location.search);
-
-    const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : urlParams.get('net') || '';
- 
-
     const parser = new DOMParser();
     const netInfoEl = document.getElementById('netInfo');
     const lastUpdatedEl = document.getElementById('lastUpdated');
     const checkinsEl = document.getElementById('checkins');
     const errorMsgEl = document.getElementById('errorMsg');
+
+    const USE_DEFAULTS = true;
+    const DEFAULT_NET_NAME = "";
+    const DEFAULT_CONTROLLER = "";
+    const urlParams = new URLSearchParams(window.location.search);
+
+    const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : (urlParams.get('net') || '');
+    const netController = USE_DEFAULTS ? DEFAULT_CONTROLLER : (urlParams.get('controller') || '');
 
     const proxy = 'https://corsproxy.io/?';
 
@@ -136,5 +136,3 @@
   </script>
 </body>
 </html>
-
-
