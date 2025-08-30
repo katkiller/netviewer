@@ -1,1 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>NetLogger Viewer</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2em;
+      background-color: var(--bg, #fff);
+      color: var(--fg, #000);
+    }
+    .dark-mode {
+      --bg: #111;
+      --fg: #eee;
+    }
+    h1 { font-size: 24px; margin-bottom: 0.2em; }
+    #header-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1em;
+    }
+    #top-buttons {
+      display: flex;
+      gap: 0.5em;
+    }
+    #netmeta { font-size: 16px; margin-bottom: 1.2em; background: #eef; padding: 0.8em; border-radius: 6px; }
+    .dark-mode #netmeta { background: #333; }
+    #lastUpdate { font-size: 14px; margin-bottom: 0.8em; }
+    #refreshBtn, #darkToggle {
+      padding: 0.3em 0.6em;
+      font-size: 13px;
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #refreshBtn[disabled] {
+      background-color: #888;
+      cursor: not-allowed;
+    }
+    .checkin-entry {
+      margin-bottom: 1em;
+      padding: 0.8em;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #f9f9f9;
+    }
+    .dark-mode .checkin-entry {
+      background: #222;
+      border-color: #555;
+    }
+    .netcontrol-highlight {
+      background-color: #fffbe6;
+      border-color: #ffcc00;
+      box-shadow: 0 0 6px rgba(255, 204, 0, 0.5);
+    }
+    .dark-mode .netcontrol-highlight {
+      background-color: #554;
+      border-color: #cc0;
+    }
+    .pointer-highlight {
+      border: 2px solid red;
+      background-color: #ffe6e6;
+    }
+    .dark-mode .pointer-highlight {
+      background-color: #400;
+    }
+    .checkin-entry strong {
+      display: inline-block;
+      min-width: 100px;
+    }
+    #error { color: red; margin-top: 1em; }
+  </style>
+</head>
+<body>
+  <div id="header-controls">
+    <h1>NetLogger Viewer</h1>
+    <div id="top-buttons">
+      <button id="darkToggle">Dark Mode</button>
+      <button id="refreshBtn">Refresh</button>
+    </div>
+  </div>
+  <div id="netmeta"></div>
+  <div id="lastUpdate"></div>
+  <div id="error"></div>
+  <div id="checkins"></div>
+
+  <script>
+    const corsProxy = 'https://corsproxy.io/?';
+    const baseUrl = 'https://www.netlogger.org/api';
+    const desiredNetName = "HHHNET";
+    const refreshBtn = document.getElementById("refreshBtn");
+    const darkToggle = document.getElementById("darkToggle");
+    const netMetaDiv = document.getElementById("netmeta");
+    const lastUpdateDiv = document.getElementById("lastUpdate");
+    const errorDiv = document.getElementById("error");
+    const checkinsDiv = document.getElementById("checkins");
+
+    if (localStorage.getItem("theme") === "dark") document.body.classList.add("dark-mode");
+    darkToggle.addEventListener("click", () => {
+      document.body.classList.toggle("dark-mode");
+      localStorage.setItem("theme", document.body.classList.contains("dark-mode") ? "dark" : "light");
+    });
+
+    let lastActiveNetsRequest = 0;
+    let lastCheckinsRequest = 0;
+    let activeNetMeta = null;
+    let serverName = null;
+    let sessionStart = Date.now();
+    let isTabVisible = true;
+
+    document.addEventListener("visibilitychange", () => {
+      isTabVisible = !document.hidden;
+    });
+
+    function formatTimestamp(date) {
+      return date.toLocaleString(undefined, { hour12: false });
+    }
+
+    function loadFromCache() {
+      try {
+        const cached = localStorage.getItem("netlogger_cached_meta");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          activeNetMeta = new DOMParser().parseFromString(parsed.meta, "text/xml").documentElement;
+          serverName = parsed.serverName;
+        }
+      } catch {}
+    }
+
+    function saveToCache(serverName, metaXmlString) {
+      const cacheData = {
+        serverName,
+        meta: metaXmlString
+      };
+      localStorage.setItem("netlogger_cached_meta", JSON.stringify(cacheData));
+    }
+
+    async function fetchXML(url, type) {
+      const now = Date.now();
+      if (type === "activeNets" && now - lastActiveNetsRequest < 60000) throw new Error("TOO_SOON_ACTIVE");
+      if (type === "checkins" && now - lastCheckinsRequest < 20000) throw new Error("TOO_SOON_CHECKINS");
+
+      const response = await fetch(corsProxy + encodeURIComponent(url));
+      if (!response.ok) throw new Error(`Fetch error: ${response.status}`);
+      const text = await response.text();
+      if (type === "activeNets") lastActiveNetsRequest = now;
+      if (type === "checkins") lastCheckinsRequest = now;
+      return new DOMParser().parseFromString(text, "text/xml");
+    }
+
+    async function loadAndShowNet() {
+      if (!isTabVisible) return;
+      if (Date.now() - sessionStart > 10800000) { // 3 hours
+        errorDiv.textContent = "Session expired after 3 hours to reduce NetLogger load.";
+        refreshBtn.disabled = true;
+        return;
+      }
+
+      try {
+        refreshBtn.disabled = true;
+        errorDiv.textContent = "";
+
+        if (!activeNetMeta || !serverName) loadFromCache();
+
+        if (!activeNetMeta || !serverName) {
+          const xml = await fetchXML(`${baseUrl}/GetActiveNets`, "activeNets");
+          const servers = Array.from(xml.getElementsByTagName("Server"));
+
+          for (const server of servers) {
+            const nets = Array.from(server.getElementsByTagName("Net"));
+            const found = nets.find(net => net.getElementsByTagName("NetName")[0]?.textContent.trim().toUpperCase() === desiredNetName);
+            if (found) {
+              activeNetMeta = found;
+              serverName = server.getElementsByTagName("ServerName")[0]?.textContent;
+              saveToCache(serverName, new XMLSerializer().serializeToString(found));
+              break;
+            }
+          }
+        }
+
+        if (!activeNetMeta || !serverName) {
+          errorDiv.textContent = `Net "${desiredNetName}" not found among active nets.`;
+          return;
+        }
+
+        const netName = activeNetMeta.getElementsByTagName("NetName")[0]?.textContent || "";
+        const frequency = activeNetMeta.getElementsByTagName("Frequency")[0]?.textContent || "";
+        const mode = activeNetMeta.getElementsByTagName("Mode")[0]?.textContent || "";
+        const band = activeNetMeta.getElementsByTagName("Band")[0]?.textContent || "";
+        const netControl = activeNetMeta.getElementsByTagName("NetControl")[0]?.textContent.trim().toUpperCase() || "";
+        const logger = activeNetMeta.getElementsByTagName("Logger")[0]?.textContent || "";
+        const date = activeNetMeta.getElementsByTagName("Date")[0]?.textContent || "";
+
+        const checkinsXml = await fetchXML(`${baseUrl}/GetCheckins.php?ServerName=${serverName}&NetName=${encodeURIComponent(netName)}`, "checkins");
+        const checkins = Array.from(checkinsXml.getElementsByTagName("Checkin"));
+        const pointerSerial = checkinsXml.getElementsByTagName("Pointer")[0]?.textContent?.trim() || null;
+
+        const validCheckins = checkins.filter(c => {
+          const call = c.getElementsByTagName("Callsign")[0]?.textContent.trim() || "";
+          return call !== "";
+        });
+
+        const metaHTML = `
+          <div><strong>Control:</strong> ${netControl} | <strong>Frequency:</strong> ${frequency} MHz | <strong>Mode:</strong> ${mode} | <strong>Band:</strong> ${band}</div>
+          <div><strong>Logger:</strong> ${logger}</div>
+          <div><strong>Started:</strong> ${date} UTC | <strong>Check-ins with Callsign:</strong> ${validCheckins.length}</div>
+        `;
+
+        document.querySelector("h1").textContent = `NetLogger Viewer – ${netName}`;
+        netMetaDiv.innerHTML = metaHTML;
+        lastUpdateDiv.textContent = `Last Updated: ${formatTimestamp(new Date())}`;
+
+        const fragment = document.createDocumentFragment();
+        validCheckins.forEach(c => {
+          const serial = c.getElementsByTagName("SerialNo")[0]?.textContent.trim() || "";
+          const call = c.getElementsByTagName("Callsign")[0]?.textContent.trim() || "";
+          const name = c.getElementsByTagName("FirstName")[0]?.textContent || "";
+          const comment = c.getElementsByTagName("Remarks")[0]?.textContent || "";
+          const city = c.getElementsByTagName("CityCountry")[0]?.textContent || "";
+          const state = c.getElementsByTagName("State")[0]?.textContent || "";
+          const county = c.getElementsByTagName("County")[0]?.textContent || "";
+          const grid = c.getElementsByTagName("Grid")[0]?.textContent || "";
+
+          const entry = document.createElement("div");
+          entry.className = "checkin-entry";
+
+          if (call.toUpperCase() === netControl) entry.classList.add("netcontrol-highlight");
+          if (pointerSerial && serial === pointerSerial) entry.classList.add("pointer-highlight");
+
+          entry.innerHTML = `
+            <div><strong>Callsign:</strong> <a href="https://www.qrz.com/db/${call}" target="_blank" rel="noopener noreferrer">${call}</a></div>
+            <div><strong>Name:</strong> ${name}</div>
+            <div><strong>Comment:</strong> ${comment}</div>
+            <div><strong>City:</strong> ${city}</div>
+            <div><strong>State:</strong> ${state}</div>
+            <div><strong>County:</strong> ${county}</div>
+            <div><strong>Grid:</strong> ${grid}</div>
+          `;
+          fragment.appendChild(entry);
+        });
+        checkinsDiv.innerHTML = "";
+        checkinsDiv.appendChild(fragment);
+
+        setTimeout(() => { refreshBtn.disabled = false; }, 10000);
+      } catch (err) {
+        if (err.message !== "TOO_SOON_ACTIVE" && err.message !== "TOO_SOON_CHECKINS") {
+          errorDiv.textContent = "Error loading data: " + err.message;
+          console.error(err);
+        }
+        setTimeout(() => { refreshBtn.disabled = false; }, 10000);
+      }
+    }
+
+    refreshBtn.addEventListener("click", () => {
+      if (!refreshBtn.disabled) loadAndShowNet();
+    });
+
+    loadAndShowNet();
+  </script>
+</body>
+</html>
 
