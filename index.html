@@ -47,12 +47,11 @@
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const USE_DEFAULTS = true;
-const DEFAULT_NET_NAME = "3916 Net";
+    const DEFAULT_NET_NAME = "Sarpy County Simplex Net";
+    const DEFAULT_CONTROLLER = "W0LHO";
 
-const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : urlParams.get('net') || '';
-
-
-
+    const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : urlParams.get('net') || '';
+    const netController = USE_DEFAULTS ? DEFAULT_CONTROLLER : urlParams.get('controller') || '';
 
     const parser = new DOMParser();
     const netInfoEl = document.getElementById('netInfo');
@@ -60,11 +59,12 @@ const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : urlParams.get('net') || '';
     const checkinsEl = document.getElementById('checkins');
     const errorMsgEl = document.getElementById('errorMsg');
 
+    const proxy = 'https://corsproxy.io/?';
+
     async function fetchNetData() {
       try {
-        const proxy = 'https://corsproxy.io/?';
-        const apiUrl = 'https://www.netlogger.org/api/GetActiveNets.php';
-        const res = await fetch(proxy + encodeURIComponent(apiUrl));
+        const activeUrl = proxy + encodeURIComponent('https://www.netlogger.org/api/GetActiveNets.php');
+        const res = await fetch(activeUrl);
         if (!res.ok) throw new Error('Network response was not ok');
         const xml = await res.text();
         const doc = parser.parseFromString(xml, 'application/xml');
@@ -78,18 +78,25 @@ const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : urlParams.get('net') || '';
           return nameMatch || controllerMatch;
         });
 
-        if (!matchedNet) {
-          netInfoEl.textContent = `No matching net found for name "${netName}" or controller "${netController}".`;
+        let selectedNet = matchedNet;
+        if (!selectedNet && nets.length > 0) {
+          selectedNet = nets[0];
+          errorMsgEl.textContent = `No match found. Showing first available net instead.`;
+        }
+
+        if (!selectedNet) {
+          netInfoEl.textContent = `No active public nets found.`;
           checkinsEl.innerHTML = '';
           lastUpdatedEl.textContent = '';
           return;
         }
 
-        const netID = matchedNet.getAttribute('ID');
-        const netDisplayName = matchedNet.getAttribute('NetName');
-        const controllerCall = matchedNet.getAttribute('NetControlCallsign');
+        const netID = selectedNet.getAttribute('ID');
+        const netDisplayName = selectedNet.getAttribute('NetName');
+        const controllerCall = selectedNet.getAttribute('NetControlCallsign');
 
-        const checkinsRes = await fetch(`https://www.netlogger.org/api/GetCheckins.php?NetID=${encodeURIComponent(netID)}`);
+        const checkinsUrl = proxy + encodeURIComponent(`https://www.netlogger.org/api/GetCheckins.php?NetID=${encodeURIComponent(netID)}`);
+        const checkinsRes = await fetch(checkinsUrl);
         if (!checkinsRes.ok) throw new Error('Failed to fetch checkins');
         const checkinXml = await checkinsRes.text();
         const checkinDoc = parser.parseFromString(checkinXml, 'application/xml');
@@ -129,3 +136,4 @@ const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : urlParams.get('net') || '';
   </script>
 </body>
 </html>
+
