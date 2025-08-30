@@ -53,11 +53,9 @@
 
     const USE_DEFAULTS = true;
     const DEFAULT_NET_NAME = "";
-    const DEFAULT_CONTROLLER = "";
     const urlParams = new URLSearchParams(window.location.search);
 
     const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : (urlParams.get('net') || '');
-    const netController = USE_DEFAULTS ? DEFAULT_CONTROLLER : (urlParams.get('controller') || '');
 
     const proxy = 'https://corsproxy.io/?';
 
@@ -72,10 +70,8 @@
 
         const matchedNet = nets.find(n => {
           const name = n.getAttribute('NetName') || '';
-          const controller = n.getAttribute('NetControlCallsign') || '';
           const nameMatch = netName && name.trim().toLowerCase() === netName.trim().toLowerCase();
-          const controllerMatch = netController && controller.trim().toUpperCase() === netController.trim().toUpperCase();
-          return nameMatch || controllerMatch;
+          return nameMatch;
         });
 
         let selectedNet = matchedNet;
@@ -92,8 +88,7 @@
         }
 
         const netID = selectedNet.getAttribute('ID');
-        const netDisplayName = selectedNet.getAttribute('NetName');
-        const controllerCall = selectedNet.getAttribute('NetControlCallsign');
+        const netDisplayName = selectedNet.getAttribute('NetName') || 'Unnamed Net';
 
         const checkinsUrl = proxy + encodeURIComponent(`https://www.netlogger.org/api/GetCheckins.php?NetID=${encodeURIComponent(netID)}`);
         const checkinsRes = await fetch(checkinsUrl);
@@ -107,8 +102,7 @@
         const pointer = pointerElement ? pointerElement.getAttribute('Callsign') : null;
 
         netInfoEl.innerHTML = `
-          <strong>Net:</strong> ${netDisplayName}<br>
-          <strong>Controller:</strong> ${controllerCall}
+          <strong>Net:</strong> ${netDisplayName}
         `;
 
         checkinsEl.innerHTML = '';
