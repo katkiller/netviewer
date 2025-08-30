@@ -47,11 +47,9 @@
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const USE_DEFAULTS = true;
-    const DEFAULT_NET_NAME = "Sarpy County Simplex Net";
-    const DEFAULT_CONTROLLER = "W0LHO";
+    const DEFAULT_NET_NAME = "3916 Nets";
 
     const netName = USE_DEFAULTS ? DEFAULT_NET_NAME : urlParams.get('net') || '';
-    const netController = USE_DEFAULTS ? DEFAULT_CONTROLLER : urlParams.get('controller') || '';
 
     const parser = new DOMParser();
     const netInfoEl = document.getElementById('netInfo');
